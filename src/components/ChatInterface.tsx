@@ -1,8 +1,11 @@
 import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Send, Sparkles } from 'lucide-react';
+import { Send, Sparkles, Settings, Key } from 'lucide-react';
 import { ChatMessage } from './ChatMessage';
+import { ApiKeyModal } from './ApiKeyModal';
+import { GeminiService } from '@/services/geminiService';
+import { useToast } from '@/hooks/use-toast';
 
 interface Message {
   id: string;
@@ -15,14 +18,17 @@ export const ChatInterface = () => {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
-      text: 'Hello! I\'m your AI assistant. How can I help you today?',
+      text: 'Hello! I\'m your Gemini AI assistant. Please configure your API key to start chatting!',
       isUser: false,
       timestamp: new Date(),
     },
   ]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const geminiService = useRef(new GeminiService()).current;
+  const { toast } = useToast();
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -35,6 +41,17 @@ export const ChatInterface = () => {
   const handleSend = async () => {
     if (!input.trim()) return;
 
+    // Check if API key is configured
+    if (!geminiService.getApiKey()) {
+      toast({
+        title: "API Key Required",
+        description: "Please configure your Gemini API key first.",
+        variant: "destructive",
+      });
+      setIsApiKeyModalOpen(true);
+      return;
+    }
+
     const userMessage: Message = {
       id: Date.now().toString(),
       text: input.trim(),
@@ -43,30 +60,42 @@ export const ChatInterface = () => {
     };
 
     setMessages(prev => [...prev, userMessage]);
+    const userInput = input.trim();
     setInput('');
     setIsTyping(true);
 
-    // Simulate AI response
-    setTimeout(() => {
-      const responses = [
-        'That\'s an interesting question! Let me think about that...',
-        'I understand what you\'re asking. Here\'s what I think...',
-        'Great question! Based on what you\'ve said...',
-        'I can help you with that! Here\'s my suggestion...',
-        'That\'s a thoughtful inquiry. From my perspective...',
-        'Absolutely! I\'d be happy to help you with that.',
-      ];
-
+    try {
+      // Get response from Gemini API
+      const response = await geminiService.generateResponse(userInput);
+      
       const botMessage: Message = {
         id: (Date.now() + 1).toString(),
-        text: responses[Math.floor(Math.random() * responses.length)],
+        text: response,
         isUser: false,
         timestamp: new Date(),
       };
 
       setMessages(prev => [...prev, botMessage]);
+    } catch (error) {
+      console.error('Error getting AI response:', error);
+      
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        text: 'Sorry, I encountered an error. Please check your API key and try again.',
+        isUser: false,
+        timestamp: new Date(),
+      };
+
+      setMessages(prev => [...prev, errorMessage]);
+      
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to get AI response",
+        variant: "destructive",
+      });
+    } finally {
       setIsTyping(false);
-    }, 1500);
+    }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -76,18 +105,41 @@ export const ChatInterface = () => {
     }
   };
 
+  const handleApiKeySet = (apiKey: string) => {
+    geminiService.setApiKey(apiKey);
+    toast({
+      title: "API Key Set",
+      description: "Gemini API key configured successfully!",
+    });
+  };
+
+  const hasApiKey = !!geminiService.getApiKey();
+
   return (
     <div className="w-full max-w-4xl mx-auto h-[600px] bg-chat-container backdrop-blur-md rounded-3xl shadow-glass border border-border/30 flex flex-col overflow-hidden">
       {/* Header */}
       <div className="p-6 border-b border-border/30 bg-gradient-glass">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-gradient-primary rounded-full flex items-center justify-center">
-            <Sparkles className="w-5 h-5 text-white" />
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-gradient-primary rounded-full flex items-center justify-center">
+              <Sparkles className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h2 className="text-xl font-semibold text-foreground">Gemini AI Assistant</h2>
+              <p className="text-sm text-muted-foreground">
+                {hasApiKey ? 'Ready to chat!' : 'Configure API key to start'}
+              </p>
+            </div>
           </div>
-          <div>
-            <h2 className="text-xl font-semibold text-foreground">AI Assistant</h2>
-            <p className="text-sm text-muted-foreground">Always here to help</p>
-          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsApiKeyModalOpen(true)}
+            className="bg-secondary/50 backdrop-blur-sm border-border/50 hover:bg-secondary/70"
+          >
+            <Key className="w-4 h-4 mr-2" />
+            {hasApiKey ? 'Update' : 'Set'} API Key
+          </Button>
         </div>
       </div>
 
@@ -136,6 +188,13 @@ export const ChatInterface = () => {
           </Button>
         </div>
       </div>
+
+      <ApiKeyModal
+        isOpen={isApiKeyModalOpen}
+        onClose={() => setIsApiKeyModalOpen(false)}
+        onApiKeySet={handleApiKeySet}
+        currentApiKey={geminiService.getApiKey() || ''}
+      />
     </div>
   );
 };
