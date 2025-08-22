@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Send, Sparkles } from 'lucide-react';
 import { ChatMessage } from './ChatMessage';
+import { GeminiService } from '@/services/geminiService';
 
 interface Message {
   id: string;
@@ -46,27 +47,29 @@ export const ChatInterface = () => {
     setInput('');
     setIsTyping(true);
 
-    // Simulate AI response
-    setTimeout(() => {
-      const responses = [
-        'That\'s an interesting question! Let me think about that...',
-        'I understand what you\'re asking. Here\'s what I think...',
-        'Great question! Based on what you\'ve said...',
-        'I can help you with that! Here\'s my suggestion...',
-        'That\'s a thoughtful inquiry. From my perspective...',
-        'Absolutely! I\'d be happy to help you with that.',
-      ];
-
+    // Get AI response from Gemini
+    try {
+      const aiResponse = await GeminiService.generateResponse(userMessage.text);
+      
       const botMessage: Message = {
         id: (Date.now() + 1).toString(),
-        text: responses[Math.floor(Math.random() * responses.length)],
+        text: aiResponse,
         isUser: false,
         timestamp: new Date(),
       };
 
       setMessages(prev => [...prev, botMessage]);
+    } catch (error) {
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        text: 'Sorry, I encountered an error. Please try again.',
+        isUser: false,
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
       setIsTyping(false);
-    }, 1500);
+    }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
